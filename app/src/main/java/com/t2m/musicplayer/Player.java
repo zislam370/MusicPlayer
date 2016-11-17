@@ -22,7 +22,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class Player extends AppCompatActivity {
+public class Player extends AppCompatActivity implements OnCompletionListener, SeekBar.OnSeekBarChangeListener {
 
     final String song_urs[] = {"http://zipitbd.com/MusicPlayer/Tumi_Amar.mp3",
             "http://zipitbd.com/MusicPlayer/Deyale_Deyale.mp3",
@@ -83,12 +83,17 @@ public class Player extends AppCompatActivity {
         counter = 0;
 
 
-
+        songProgressBar.setOnSeekBarChangeListener(this); // Important
+        // mp.setOnCompletionListener(this); // Important
 
         // Mediaplayer
         mp = new MediaPlayer();
 
         mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
+
+        songProgressBar.setOnSeekBarChangeListener(this); // Important
+        mp.setOnCompletionListener(this); // Important
+
 
         btnPlay.setOnClickListener(new View.OnClickListener() {
 
@@ -135,6 +140,28 @@ public class Player extends AppCompatActivity {
         });
 
 
+        /**
+         * Forward button click event
+         * Forwards song specified seconds
+         * */
+        btnForward.setOnClickListener(new View.OnClickListener() {
+
+            @Override
+            public void onClick(View arg0) {
+                // get current song position
+                int currentPosition = mp.getCurrentPosition();
+                // check if seekForward time is lesser than song duration
+                if (currentPosition + seekForwardTime <= mp.getDuration()) {
+                    // forward song
+                    mp.seekTo(currentPosition + seekForwardTime);
+                } else {
+                    // forward to end position
+                    mp.seekTo(mp.getDuration());
+                }
+            }
+        });
+
+
         btnNext.setOnClickListener(new View.OnClickListener() {
 
             @Override
@@ -142,7 +169,7 @@ public class Player extends AppCompatActivity {
                 // check if next song is there or not
 
 
-                if (counter < (song_urs.length-1)) {
+                if (counter < (song_urs.length - 1)) {
                     counter = counter + 1;
 
                     try {
@@ -193,12 +220,33 @@ public class Player extends AppCompatActivity {
         });
 
 
+        /**
+         * Backward button click event
+         * Backward song to specified seconds
+         * */
+        btnBackward.setOnClickListener(new View.OnClickListener() {
+
+            @Override
+            public void onClick(View arg0) {
+                // get current song position
+                int currentPosition = mp.getCurrentPosition();
+                // check if seekBackward time is greater than 0 sec
+                if (currentPosition - seekBackwardTime >= 0) {
+                    // forward song
+                    mp.seekTo(currentPosition - seekBackwardTime);
+                } else {
+                    // backward to starting position
+                    mp.seekTo(0);
+                }
+
+            }
+        });
+
         btnPrevious.setOnClickListener(new View.OnClickListener() {
 
             @Override
             public void onClick(View arg0) {
                 // check if next song is there or not
-
 
 
                 if (counter > 0) {
@@ -299,8 +347,127 @@ public class Player extends AppCompatActivity {
 
     }
 
+    public void playSong(int counter) {
+        // Play song
+        try {
+            mp.reset();
+            mp.setDataSource(song_urs[counter]);
+            mp.prepare();
+            mp.start();
+            // Displaying Song title
+            //String songTitle = songsList.get(songIndex).get("songTitle");
+            //songTitleLabel.setText(songTitle);
+            songTitleLabel.setText(song_urs[counter]);
+            // Changing Button Image to pause image
+            btnPlay.setImageResource(R.drawable.btn_pause);
+
+            // set Progress bar values
+            songProgressBar.setProgress(0);
+            songProgressBar.setMax(100);
+
+            // Updating progress bar
+            updateProgressBar();
+        } catch (IllegalArgumentException e) {
+            e.printStackTrace();
+        } catch (IllegalStateException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
 
+    public void updateProgressBar() {
+        mHandler.postDelayed(mUpdateTimeTask, 100);
+    }
+
+    /**
+     * Background Runnable thread
+     */
+    private Runnable mUpdateTimeTask = new Runnable() {
+        public void run() {
+            long totalDuration = mp.getDuration();
+            long currentDuration = mp.getCurrentPosition();
+
+            // Displaying Total Duration time
+            songTotalDurationLabel.setText("" + utils.milliSecondsToTimer(totalDuration));
+            // Displaying time completed playing
+            songCurrentDurationLabel.setText("" + utils.milliSecondsToTimer(currentDuration));
+
+            // Updating progress bar
+            int progress = (int) (utils.getProgressPercentage(currentDuration, totalDuration));
+            //Log.d("Progress", ""+progress);
+            songProgressBar.setProgress(progress);
+
+            // Running this thread after 100 milliseconds
+            mHandler.postDelayed(this, 100);
+        }
+    };
+
+    /**
+     *
+     * */
+    @Override
+    public void onProgressChanged(SeekBar seekBar, int progress, boolean fromTouch) {
+
+    }
+
+    /**
+     * When user starts moving the progress handler
+     */
+    @Override
+    public void onStartTrackingTouch(SeekBar seekBar) {
+        // remove message Handler from updating progress bar
+        mHandler.removeCallbacks(mUpdateTimeTask);
+    }
+
+    /**
+     * When user stops moving the progress hanlder
+     */
+    @Override
+    public void onStopTrackingTouch(SeekBar seekBar) {
+        mHandler.removeCallbacks(mUpdateTimeTask);
+        int totalDuration = mp.getDuration();
+        int currentPosition = utils.progressToTimer(seekBar.getProgress(), totalDuration);
+
+        // forward or backward to certain seconds
+        mp.seekTo(currentPosition);
+
+        // update timer progress again
+        updateProgressBar();
+    }
+
+    /**
+     * On Song Playing completed
+     * if repeat is ON play same song again
+     * if shuffle is ON play random song
+     */
+    @Override
+    public void onCompletion(MediaPlayer arg0) {
+
+        // check for repeat is ON or OFF
+        if (isRepeat) {
+            // repeat is on play same song again
+            playSong(counter);
+            //song_urs(counter);
+        } else if (isShuffle) {
+            // shuffle is on - play a random song
+            Random rand = new Random();
+            counter = rand.nextInt((song_urs.length - 1) - 0 + 1) + 0;
+            playSong(counter);
+        } else {
+            // no repeat or shuffle ON - play next song
+            if (counter < (song_urs.length - 1)) {
+                playSong(counter + 1);
+                counter = counter + 1;
+            } else {
+                // play first song
+                counter = 0;
+                playSong(counter);
+
+            }
+        }
+    }
 
 
     @Override
